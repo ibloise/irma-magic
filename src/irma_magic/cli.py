@@ -1,6 +1,8 @@
 import argparse
+import sys
+
 from . import constants
-from .bulk import IrmaBulk
+from .bulk import IrmaBulk, IrmaExecutionError
 
 def main():
 
@@ -25,8 +27,14 @@ def main():
     args = parser.parse_args()
 
     if args.command == "bulker":
-        bulker_main(args)
-    
+        try:
+            bulker_main(args)
+        except ValueError as error:
+            parser.error(str(error))
+        except IrmaExecutionError as error:
+            print(f"irmagic: error: {error}", file=sys.stderr)
+            return 1
+    return 0
 
 def bulker_main(args):
 
@@ -39,7 +47,7 @@ def bulker_main(args):
     
     irma_bulker = IrmaBulk(args.module, args.files, args.reads, args.irma_cmd, args.forward_pattern, args.reverse_pattern)
 
-    irma_bulker.run()
+    return irma_bulker.run()
 
 
 if __name__ == "__main__":

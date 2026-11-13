@@ -34,13 +34,13 @@
 
 Suite añadida: `tests/test_h0_regressions.py`. Usa únicamente `unittest`, rutas sintéticas y un mock de `subprocess.run`; no instala dependencias ni llama a CDC-IRMA.
 
-Comando ejecutado:
+Comando ejecutado durante H0:
 
 ```text
 PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
-Resultado: **8 tests ejecutados; 1 pasó y 7 quedaron como `expected failure`**, que registra los defectos FASTQ/ejecución sin introducir arreglos en H0. No hubo fallos inesperados. Los casos de influenza y renombrado quedan pendientes de ejecución dinámica por falta de Biopython.
+Resultado base de H0: **8 tests ejecutados; 1 pasó y 7 quedaron como `expected failure`**, que registró los defectos FASTQ/ejecución sin introducir arreglos en H0. Al abordar H1, esas regresiones se convirtieron en aserciones normales y ahora pasan. Los casos de influenza y renombrado quedaron fuera de la ejecución dinámica de H0 por falta de Biopython en aquel entorno.
 
 ## Riesgos, límites y siguiente puerta
 
