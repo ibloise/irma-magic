@@ -2,13 +2,13 @@
 
 ## Decisión
 
-**NO-GO por ahora para publicar.** El mínimo acordado por el mantenedor es
+**GO para integrar en `develop`; NO-GO para publicar.** El mínimo acordado por el mantenedor es
 Python `>=3.10`; la matriz actual prueba Python 3.10–3.14. En la ejecución
 anterior pasaron Python 3.10–3.13; Python 3.8 y 3.9 fallaron en `setup-python`
 porque Ubuntu 26.04 ya no ofrecía esas versiones. El rango nuevo conserva los
-intérpretes que pasaron y añade 3.14. La matriz actualizada queda pendiente de
-ejecución en GitHub tras los últimos cambios de CLI. No se abrió PR, no se hizo
-merge, no se creó tag y no se publicó nada.
+intérpretes que pasaron y añade 3.14. La matriz actualizada pasó en GitHub
+Actions para Python 3.10–3.14. La integración en `develop` está autorizada por
+el mantenedor; no se creará tag ni se publicará nada.
 
 ## Identificación
 
@@ -19,7 +19,7 @@ merge, no se creó tag y no se publicó nada.
   en `origin/codex/audit-regression`.
 - El commit local `482a3c0` restaura la CLI `bulker`/`renamer`/`flu`; su push fue
   interrumpido por el mantenedor mientras se afinaba el mínimo de Python.
-- PR: ninguno; el trabajo se mantiene local según la instrucción del mantenedor.
+- PR: ninguno; el mantenedor autorizó integrar directamente en `develop`.
 - Distribución candidata: `irma-magic==0.1.0a1`.
 - Licencia: MIT, seleccionada explícitamente por el mantenedor; texto en
   `LICENSE` y metadatos de paquete configurados.
@@ -64,7 +64,7 @@ merge, no se creó tag y no se publicó nada.
 | CLI instalada e imports | Desde un directorio externo: `irmagic --help`, `irmagic {bulker,renamer,flu} --help`, imports de los módulos del paquete | Pasó. Los tres comandos aparecen en ayuda; `irmagic` sin subcomando termina con estado 2. |
 | Backend CDC-IRMA real | No disponible/ejecutado | No ejecutado; la suite simula el subprocess. |
 | Matriz CI remota en `e0fbd1d` | GitHub Actions, Ubuntu 26.04 | 3.10–3.13 pasaron; 3.8 y 3.9 fallaron en `setup-python` antes de los tests porque no están disponibles para esa imagen. |
-| Matriz CI actual (Python 3.10–3.14) | Aún no ejecutada sobre la CLI restaurada | Pendiente de push de los últimos cambios. |
+| Matriz CI actual (Python 3.10–3.14) | GitHub Actions, Ubuntu 22.04; workflow run `43481018150` (#2), commit `f44ec68` | **Pasó**; los cinco jobs finalizaron correctamente. [Ver workflow](https://github.com/ibloise/irma-magic/actions/runs/43481018150). |
 | Python 3.10–3.12 y 3.14 local | Solo Python 3.13.5 instalado en el entorno de trabajo | No ejecutado localmente. |
 | Instalación editable | No ejecutada en H4 | No verificada. |
 
@@ -86,10 +86,9 @@ Repetir la comprobación inmediatamente antes de publicar.
 
 ## Riesgos y compatibilidad
 
-1. **Bloqueante para GO — CI pendiente:** la matriz previa pasó en Python
-   3.10–3.13. Los jobs de 3.8 y 3.9 fallaron durante setup. El mínimo ahora es
-   3.10 y se añadió 3.14; falta ejecutar la matriz actualizada con la CLI
-   restaurada.
+1. **CI validada:** la matriz actual pasó en Python 3.10–3.14. La ejecución
+   previa en Python 3.8 y 3.9 falló durante setup por indisponibilidad de esos
+   intérpretes en Ubuntu 26.04; ya no forman parte del rango soportado.
 2. **Limitación funcional:** no se probó con una instalación real de CDC-IRMA.
    El backend y las entradas se simularon. Una smoke test real sigue siendo
    opcional según el plan, pero no se hace afirmación de compatibilidad real.
@@ -107,7 +106,7 @@ validación biológica o clínica.
 
 ## Checklist de publicación pendiente
 
-- Esperar workflow verde en Python 3.10–3.14.
+- Mantener la evidencia del workflow verde de Python 3.10–3.14.
 - Repetir la consulta de disponibilidad y similitud del nombre en PyPI.
 - Revisar cuenta/propietarios de PyPI y generar artefactos finales desde el
   commit aprobado.
