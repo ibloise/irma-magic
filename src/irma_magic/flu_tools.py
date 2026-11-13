@@ -4,6 +4,7 @@ import pandas as pd
 from collections import defaultdict
 from typing import Optional
 import argparse
+import sys
 from . import constants
 from .fasta import FastaFile, FastaRecord
 
@@ -201,6 +202,22 @@ class FluSegmentCollection(Collection):
         for sample_id in sorted(return_dict):
             return_collection.append(FluGenome(*return_dict[sample_id]))
         return return_collection
+
+    def return_genomes_with_errors(self):
+        return_dict = defaultdict(list)
+        for segment in self._collection:
+            return_dict[segment.id].append(segment)
+
+        return_collection = FluGenomeCollection()
+        errors = []
+        for sample_id in sorted(return_dict):
+            try:
+                genome = FluGenome(*return_dict[sample_id])
+            except ValueError as error:
+                errors.append(f"Sample {sample_id!r}: {error}")
+                continue
+            return_collection.append(genome)
+        return return_collection, errors
     
     @classmethod
     def from_fasta(cls, fasta):
@@ -381,22 +398,31 @@ class FluGenomeCollection(Collection):
 
     def to_segment_subtype_dict(self):
         grouped = defaultdict(FluSegmentCollection)
-        seen_ids = set()
-        for genome in sorted(self._collection, key=lambda item: item.id):
-            if genome.id in seen_ids:
-                raise ValueError(f"Duplicate genome sample ID {genome.id!r}")
-            seen_ids.add(genome.id)
-            if genome.subtype is None:
-                raise ValueError(
-                    f"Cannot group segments by subtype: sample {genome.id!r} "
-                    "does not have a complete HA/NA subtype"
+        by_id = defaultdict(list)
+        for genome in self._collection:
+            by_id[genome.id].append(genome)
+
+        errors = []
+        for sample_id in sorted(by_id):
+            genomes = by_id[sample_id]
+            if len(genomes) != 1:
+                errors.append(
+                    f"Sample {sample_id!r}: duplicate genome records prevent grouping"
                 )
+                continue
+            genome = genomes[0]
+            if genome.subtype is None:
+                errors.append(
+                    f"Sample {genome.id!r}: cannot group segments by subtype; "
+                    "complete HA/NA subtype is unavailable"
+                )
+                continue
             for segment_name in SEGMENTS:
                 segment = genome.segments.get(segment_name)
                 if segment is not None:
                     key = f"{segment_name}_{genome.subtype}"
                     grouped[key].append(segment)
-        return {key: grouped[key] for key in sorted(grouped)}
+        return {key: grouped[key] for key in sorted(grouped)}, errors
 
 
 class FluGenomeRecordCreator:
@@ -533,13 +559,18 @@ def main():
     collection = FluSegmentCollection.from_list_files(args.files)
 
 
-    genome_collection = collection.return_genomes()
+    genome_collection, errors = collection.return_genomes_with_errors()
 
     if args.mode == "samples":
         segments = genome_collection.to_id_dict()
     else:
-        segments = genome_collection.to_segment_subtype_dict()
+        segments, subtype_errors = genome_collection.to_segment_subtype_dict()
+        errors.extend(subtype_errors)
 
     file_writer = FastaFileWriter()
     flu_writer = FluGenomeFileWriter(file_writer)
-    flu_writer.write_fasta_from_dict(segments, args.out_dir)
+    for error in errors:
+        print(f"irmagic: warning: {error}", file=sys.stderr)
+    if segments:
+        flu_writer.write_fasta_from_dict(segments, args.out_dir)
+    return 1 if errors else 0

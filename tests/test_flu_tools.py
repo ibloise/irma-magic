@@ -1,6 +1,8 @@
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -225,8 +227,10 @@ class FluFastaIntegrationTests(unittest.TestCase):
             sample_dir = Path(directory) / "samples"
             segment_dir = Path(directory) / "segments"
             self.writer.write_fasta_from_dict(self.genomes.to_id_dict(), sample_dir)
+            segment_groups, errors = self.genomes.to_segment_subtype_dict()
+            self.assertEqual(errors, [])
             self.writer.write_fasta_from_dict(
-                self.genomes.to_segment_subtype_dict(), segment_dir
+                segment_groups, segment_dir
             )
 
             sample_a = FastaFile(str(sample_dir / "a_sample.fasta")).read()
@@ -300,7 +304,7 @@ class FluFastaIntegrationTests(unittest.TestCase):
             self.assertEqual([(segment.id, segment.sequence) for segment in reparsed],
                              [("a_sample", "CCAA")])
 
-    def test_subtype_grouping_refuses_unknown_or_incomplete_samples(self):
+    def test_subtype_grouping_skips_and_reports_unknown_or_incomplete_samples(self):
         complete = FluGenome(
             make_segment("complete", constants.HA, "AAAA", segment_type="H1"),
             make_segment("complete", constants.NA, "CCCC", segment_type="N1"),
@@ -310,10 +314,14 @@ class FluFastaIntegrationTests(unittest.TestCase):
         flu_b = FluGenome(
             make_segment("flu_b", constants.M, "CCCC", flu_type="B")
         )
-        for genome in (incomplete, flu_b):
-            with self.subTest(sample=genome.id):
-                with self.assertRaisesRegex(ValueError, "does not have a complete HA/NA subtype"):
-                    FluGenomeCollection(complete, genome).to_segment_subtype_dict()
+        grouped, errors = FluGenomeCollection(complete, incomplete, flu_b).to_segment_subtype_dict()
+        self.assertEqual(
+            sorted(grouped),
+            ["HA_H1N1", "MP_H1N1", "NA_H1N1"],
+        )
+        self.assertEqual(len(errors), 2)
+        self.assertIn("flu_b", errors[0])
+        self.assertIn("incomplete", errors[1])
 
         with tempfile.TemporaryDirectory() as directory:
             self.writer.write_fasta_from_dict(
@@ -330,10 +338,10 @@ class FluFastaIntegrationTests(unittest.TestCase):
             output_dir.mkdir()
             sentinel = output_dir / "NP_H1N1.fasta"
             sentinel.write_text("keep this\n", encoding="utf-8")
+            segment_groups, errors = self.genomes.to_segment_subtype_dict()
+            self.assertEqual(errors, [])
             with self.assertRaisesRegex(FileExistsError, "Refusing to overwrite"):
-                self.writer.write_fasta_from_dict(
-                    self.genomes.to_segment_subtype_dict(), output_dir
-                )
+                self.writer.write_fasta_from_dict(segment_groups, output_dir)
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep this\n")
             self.assertFalse((output_dir / "HA_H1N1.fasta").exists())
 
@@ -411,6 +419,46 @@ class FluFastaIntegrationTests(unittest.TestCase):
                 sorted(path.name for path in output.glob("*.fasta")),
                 ["HA_H1N1.fasta", "MP_H1N1.fasta", "NA_H1N1.fasta"],
             )
+
+    def test_cli_keeps_processing_when_one_sample_lacks_subtype(self):
+        from irma_magic import flu_tools
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "input.fasta"
+            output = Path(directory) / "results"
+            source.write_text(
+                ">valid_A_HA_H1\nAAAA\n"
+                ">valid_A_NA_N1\nCCCC\n"
+                ">valid_A_MP\nGGGG\n"
+                ">incomplete_A_MP\nTTTT\n",
+                encoding="utf-8",
+            )
+            argv = [
+                "flu-tools", "-f", str(source), "-m", "segments",
+                "-o", str(output),
+            ]
+            stderr = StringIO()
+            with patch("sys.argv", argv), redirect_stderr(stderr):
+                status = flu_tools.main()
+            self.assertEqual(status, 1)
+            self.assertIn("incomplete", stderr.getvalue())
+            self.assertEqual(
+                sorted(path.name for path in output.glob("*.fasta")),
+                ["HA_H1N1.fasta", "MP_H1N1.fasta", "NA_H1N1.fasta"],
+            )
+            mp_records = FastaFile(str(output / "MP_H1N1.fasta")).read()
+            self.assertEqual([record.id for record in mp_records], ["valid_A_MP"])
+
+    def test_genome_build_errors_are_isolated_per_sample(self):
+        segments = FluSegmentCollection(
+            make_segment("valid", constants.NP, "AAAA"),
+            make_segment("broken", constants.HA, "CCCC", segment_type="H1"),
+            make_segment("broken", constants.HA, "GGGG", segment_type="H3"),
+        )
+        genomes, errors = segments.return_genomes_with_errors()
+        self.assertEqual([genome.id for genome in genomes], ["valid"])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("broken", errors[0])
 
 
 if __name__ == "__main__":

@@ -38,7 +38,9 @@ La hipótesis previa de que `extend(value)` fallaba era incorrecta: `Collection.
 
 Después de H2, el modo CLI `segments` agrupa por **segmento y subtipo completo**. Escribe, por ejemplo, `HA_H3N2.fasta`, `NA_H3N2.fasta` y `MP_H3N2.fasta`; todos los registros proceden de genomas H3N2 y mantienen su ID/segmento original. `FluGenomeCollection.to_segment_dict()` conserva su agrupación anterior por segmento para compatibilidad; la CLI usa `to_segment_subtype_dict()`.
 
-Si una muestra tiene HA o NA ausente, carece de sufijo de subtipo, o es influenza B sin un subtipo `HXNX`, el modo `segments` falla con el ID de esa muestra en vez de omitirla o inferir un grupo. El modo `samples` sigue exportando esas muestras.
+Si una muestra tiene HA o NA ausente, carece de sufijo de subtipo, o es influenza B sin un subtipo `HXNX`, el modo `segments` omite solo esa muestra de los grupos por subtipo y emite un aviso con su ID. Las demás muestras válidas se exportan. La CLI devuelve estado 1 para señalar que el resultado fue parcial. El modo `samples` sigue exportando las muestras con genoma válido aunque no tengan subtipo.
+
+Los errores al construir un genoma (por ejemplo, segmentos duplicados) también se aíslan por ID: se omite ese genoma, se informa y se continúa con los demás. Errores de formato FASTA/IDs que ocurren antes de poder identificar muestras siguen siendo errores de entrada del archivo.
 
 ## Pruebas y comandos
 
@@ -50,7 +52,7 @@ python -m compileall -q src tests
 git diff --check
 ```
 
-Resultado base H2: **56 tests pasaron**. Tras la agrupación adicional por subtipo completo, el conjunto ejecutó **58 tests, todos pasaron**; `compileall` y `git diff --check` finalizaron correctamente. Se validó el contenido exacto de las salidas y su relectura para comprobar IDs y secuencias, además de la ruta CLI de `segments`.
+Resultado base H2: **56 tests pasaron**. Tras la agrupación adicional por subtipo completo se ejecutaron 58 tests, todos pasaron. Con el manejo tolerante de fallos por muestra, el conjunto ejecutó **60 tests, todos pasaron**; `compileall` y `git diff --check` finalizaron correctamente. Se validó el contenido exacto de las salidas y su relectura para comprobar IDs y secuencias, además de la ruta CLI de `segments` con una muestra incompleta.
 
 ## Límites
 
