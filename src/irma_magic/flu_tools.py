@@ -1,6 +1,6 @@
 import os
 import re
-import pandas as pd
+import csv
 from collections import defaultdict
 from typing import Optional
 import argparse
@@ -352,9 +352,11 @@ class FluGenomeSummarizer:
         return sum_dict
     
     @classmethod
-    def summary_to_df(cls, flu_genome):
-        summary = cls.summary(flu_genome)
-        return pd.DataFrame([summary])
+    def summary_to_csv(cls, flu_genome, handle):
+        """Write one summary row, including its header, to a text handle."""
+        writer = csv.DictWriter(handle, fieldnames=cls.HEADERS)
+        writer.writeheader()
+        writer.writerow(cls.summary(flu_genome))
     
     @classmethod
     def bulk_summarize(cls, flu_genome_collection):
@@ -364,9 +366,11 @@ class FluGenomeSummarizer:
             return_list.append(summary)
         return return_list
     @classmethod
-    def bulk_df_summarize(cls, flu_genome_collection):
-        summary = cls.bulk_summarize(flu_genome_collection)
-        return pd.DataFrame(summary)
+    def bulk_summary_to_csv(cls, flu_genome_collection, handle):
+        """Write summaries with one header row to a text handle."""
+        writer = csv.DictWriter(handle, fieldnames=cls.HEADERS)
+        writer.writeheader()
+        writer.writerows(cls.bulk_summarize(flu_genome_collection))
 
 
 class FluGenomeCollection(Collection):

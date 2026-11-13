@@ -59,7 +59,7 @@ Resultado base H2: **56 tests pasaron**. Tras la agrupación adicional por subti
 - La aceptación del esquema de IDs se contrastó con el formato que el código previo generaba (`id_type_segment[_segment_type]`), no con una instalación real de IRMA ni con fixtures reales. El uso de `MP` se mantiene sin reinterpretación.
 - Los grupos de muestra se exportan con el ID de muestra como nombre de archivo; IDs que incluyan separadores de ruta se rechazan en escritura.
 - Los segmentos ausentes se omiten en modo `segments`; no se crean archivos FASTA vacíos.
-- `pandas` sigue utilizándose para resúmenes y no está declarado en `pyproject.toml`; H2 no añadió ni instaló dependencias.
+- En H2 el resumen aún dependía de pandas. En el cambio posterior de retirada de pandas, sus métodos de exportación se sustituyen por `csv.DictWriter` de la biblioteca estándar.
 - No se afirma validación biológica o clínica.
 
 H2 queda listo para revisión. No se abrió PR según la instrucción del usuario; la siguiente puerta es autorización de H3.

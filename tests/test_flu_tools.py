@@ -1,4 +1,5 @@
 import os
+import csv
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -135,6 +136,34 @@ class FluGenomeTests(unittest.TestCase):
         self.assertIsNone(summary["subtype"])
         self.assertEqual(summary[constants.NP], 4)
         self.assertIsNone(summary[constants.HA])
+
+    def test_summary_writes_standard_csv(self):
+        genome = FluGenome(
+            make_segment("sample", constants.NP, "ACGT"),
+            make_segment("sample", constants.HA, "AAAA", segment_type="H1"),
+            make_segment("sample", constants.NA, "CCCC", segment_type="N1"),
+        )
+        output = StringIO(newline="")
+        FluGenomeSummarizer.summary_to_csv(genome, output)
+        rows = list(csv.DictReader(StringIO(output.getvalue())))
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "sample")
+        self.assertEqual(rows[0]["subtype"], "H1N1")
+        self.assertEqual(rows[0][constants.NP], "4")
+        self.assertEqual(rows[0][constants.PB2], "")
+
+    def test_bulk_summary_writes_header_once_and_all_rows(self):
+        genomes = FluGenomeCollection(
+            FluGenome(make_segment("sample_b", constants.NP, "AC")),
+            FluGenome(make_segment("sample_a", constants.NP, "ACGT")),
+        )
+        output = StringIO(newline="")
+        FluGenomeSummarizer.bulk_summary_to_csv(genomes, output)
+        rows = list(csv.DictReader(StringIO(output.getvalue())))
+
+        self.assertEqual([row["id"] for row in rows], ["sample_b", "sample_a"])
+        self.assertEqual([row[constants.NP] for row in rows], ["2", "4"])
 
     def test_collections_reject_wrong_types_and_order_samples(self):
         collection = FluSegmentCollection(

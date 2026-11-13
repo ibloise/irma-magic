@@ -4,15 +4,24 @@ import sys
 from . import constants
 from .bulk import IrmaBulk, IrmaExecutionError
 
+
 def main():
-
-    parser = argparse.ArgumentParser(description="Rapid tools for deal with CDC-IRMA batch analysis")
+    parser = argparse.ArgumentParser(
+        prog="irmagic",
+        description="Utilities for preparing and running CDC-IRMA batches.",
+    )
     parser.add_argument("--irma_cmd", default="IRMA")
+    subparser = parser.add_subparsers(
+        dest="command",
+        required=True,
+        help="available commands",
+    )
 
-
-    subparser = parser.add_subparsers(dest="command")
-
-    bulk_parser = subparser.add_parser("bulker")
+    bulk_parser = subparser.add_parser(
+        "bulker",
+        help="run IRMA for single-end or paired FASTQ inputs",
+        description="Build and run one IRMA command per sample.",
+    )
 
     bulk_parser.add_argument("-f", "--files", help="Archivos que se van a utilizar", nargs="+", required=True)
     bulk_parser.add_argument("-m", "--module", help="Modulo que debe usar IRMA", required=True)
@@ -20,7 +29,7 @@ def main():
                         help="Tipo de lecturas introducidas")
     bulk_parser.add_argument("--forward_pattern", help="Patrón de la lectura forward (solo para paired)",
                         default=constants.FORWARD_VALUE)
-    bulk_parser.add_argument("--reverse_pattern", help="Patrón para la lectura reverse (solo en paried)",
+    bulk_parser.add_argument("--reverse_pattern", help="Patrón para la lectura reverse (solo en paired)",
                         default=constants.REVERSE_VALUE)
     
 
@@ -28,7 +37,7 @@ def main():
 
     if args.command == "bulker":
         try:
-            bulker_main(args)
+            return bulker_main(args)
         except ValueError as error:
             parser.error(str(error))
         except IrmaExecutionError as error:
@@ -51,4 +60,4 @@ def bulker_main(args):
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
