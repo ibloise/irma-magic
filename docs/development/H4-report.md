@@ -20,6 +20,8 @@ el mantenedor; no se creará tag ni se publicará nada.
 - El commit local `482a3c0` restaura la CLI `bulker`/`renamer`/`flu`; su push fue
   interrumpido por el mantenedor mientras se afinaba el mínimo de Python.
 - PR: ninguno; el mantenedor autorizó integrar directamente en `develop`.
+- Merge integrado y publicado en `develop`: `5201676` (`merge: integrate H4 and
+  Python 3.10 support`); push completado a `origin/develop`.
 - Distribución candidata: `irma-magic==0.1.0a1`.
 - Licencia: MIT, seleccionada explícitamente por el mantenedor; texto en
   `LICENSE` y metadatos de paquete configurados.
