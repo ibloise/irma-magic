@@ -11,7 +11,7 @@ release. No se abrió PR, no se hizo merge, no se creó tag y no se publicó nad
 
 - Rama: `codex/audit-regression`.
 - Base H4 revisada: `6a6b5b2` (`feat: complete CLI packaging and safe renaming`).
-- Commit de implementación H4: se anotará al registrar este informe.
+- Commit de implementación H4: `57a661e` (`release: prepare 0.1.0a1 candidate`).
 - PR: ninguno; el trabajo se mantiene local según la instrucción del mantenedor.
 - Distribución candidata: `irma-magic==0.1.0a1`.
 - Licencia: MIT, seleccionada explícitamente por el mantenedor; texto en
