@@ -544,8 +544,7 @@ class FluGenomeFileWriter:
             return segment.segment_type == expected_segment_type
         return True
 
-def main():
-    parser = argparse.ArgumentParser(description="Renombra archivos de IRMA")
+def add_arguments(parser):
     parser.add_argument("-f", "--files", help="Archivos que se van a utilizar", nargs="+", required=True)
     parser.add_argument("-o", "--out_dir", default=".")
     parser.add_argument(
@@ -558,11 +557,12 @@ def main():
             "subtipo HXNX completo (por ejemplo, HA_H3N2)"
         ),
     )
-    args = parser.parse_args()
-    
+    parser.add_argument("--summary", action="store_true", help="Write summary.csv in the output directory")
+    return parser
+
+
+def run(args):
     collection = FluSegmentCollection.from_list_files(args.files)
-
-
     genome_collection, errors = collection.return_genomes_with_errors()
 
     if args.mode == "samples":
@@ -575,6 +575,32 @@ def main():
     flu_writer = FluGenomeFileWriter(file_writer)
     for error in errors:
         print(f"irmagic: warning: {error}", file=sys.stderr)
+
+    summary_path = None
+    out_dir = os.fspath(args.out_dir or os.curdir)
+    if args.summary:
+        summary_path = os.path.join(out_dir, "summary.csv")
+        if os.path.lexists(summary_path):
+            raise FileExistsError(f"Refusing to overwrite summary file {summary_path!r}")
+
     if segments:
-        flu_writer.write_fasta_from_dict(segments, args.out_dir)
+        flu_writer.write_fasta_from_dict(segments, out_dir)
+    if summary_path is not None:
+        os.makedirs(out_dir, exist_ok=True)
+        with open(summary_path, "x", encoding="utf-8", newline="") as handle:
+            FluGenomeSummarizer.bulk_summary_to_csv(genome_collection, handle)
     return 1 if errors else 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Tools for working with influenza FASTA files")
+    add_arguments(parser)
+    args = parser.parse_args(argv)
+    try:
+        return run(args)
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -2,8 +2,9 @@
 
 IRMagic provides Python utilities for preparing FASTQ batches for CDC-IRMA and
 processing influenza FASTA results. It packages the `irma_magic` module and
-the `irmagic` command. CDC-IRMA itself is an external program and must be
-installed and available separately; IRMagic does not install or bundle it.
+the `irmagic` command with `bulker`, `renamer`, and `flu` operations. CDC-IRMA
+itself is an external program and must be installed and available separately;
+IRMagic does not install or bundle it.
 
 ## Install
 
@@ -14,6 +15,7 @@ python -m pip install .
 irmagic --help
 ```
 
+Python 3.12 or newer is required.
 IRMagic has no Python runtime dependencies. Building/installing it uses the
 `setuptools>=61` backend declared in `pyproject.toml`.
 
@@ -47,7 +49,7 @@ external IRMA installation and selected module.
 
 ## Process influenza FASTA results
 
-`flu_tools` accepts FASTA record IDs in the form
+`flu` accepts FASTA record IDs in the form
 `<sample>_<A|B>_<segment>[_<Hn|Nn>]`. Sample IDs may contain underscores but
 not whitespace. Segments are `PB2`, `PB1`, `PA`, `NP`, `HA`, `NA`, `MP`, and
 `NS`; subtype suffixes are accepted on influenza A HA (`Hn`) and NA (`Nn`).
@@ -56,15 +58,13 @@ The parser preserves sequence text and does not validate nucleotide alphabets.
 Export records grouped by sample:
 
 ```sh
-python -m irma_magic.flu_tools --files results.fasta \
-  --mode samples --out_dir exported
+irmagic flu --files results.fasta --mode samples --out_dir exported
 ```
 
 Export records grouped by segment and complete subtype:
 
 ```sh
-python -m irma_magic.flu_tools --files results.fasta \
-  --mode segments --out_dir exported
+irmagic flu --files results.fasta --mode segments --out_dir exported
 ```
 
 The `samples` mode writes one non-empty FASTA per valid sample. The `segments`
@@ -73,7 +73,15 @@ mode writes names such as `HA_H3N2.fasta`, `NA_H3N2.fasta`, and
 from subtype groups; other samples continue. A partial batch exits with status
 1. Invalid input or output collisions also fail explicitly. CSV summary helpers
 in `irma_magic.flu_tools.FluGenomeSummarizer` write standard CSV to an open text
-handle using the standard library.
+handle using the standard library. Add `--summary` to `irmagic flu` to create
+`summary.csv` in the output directory; existing summaries are not overwritten.
+
+The `renamer` command copies selected IRMA output files without modifying their
+sources and refuses to overwrite existing or colliding output paths:
+
+```sh
+irmagic renamer --dirs irma-run --types fasta vcf --out_dir renamed
+```
 
 ## Limits
 
@@ -85,6 +93,6 @@ verification evidence and known limitations.
 
 ## Development
 
-See [`docs/development/CONTRIBUTING.md`](docs/development/CONTRIBUTING.md) for
-the local test and contribution workflow. The project is distributed under
-the MIT License; see [LICENSE](LICENSE).
+See [`docs/development/README.md`](docs/development/README.md) for the
+development milestones and [`AGENTS.md`](AGENTS.md) for repository conventions.
+The project is distributed under the MIT License; see [LICENSE](LICENSE).

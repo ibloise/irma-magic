@@ -2,7 +2,7 @@ import argparse
 import os
 import shutil
 
-from . import files
+from . import constants, files
 from .fasta import FastaFile, FastaRecord, FastaWriter
 
 
@@ -116,24 +116,26 @@ class IrmaDirRenamer:
         return [item.dest_file for item in renamers]
 
 
-def main():
-    renamer_dict = {
-        files.FASTA_FILE: FastaRenamer,
-        files.BAM_FILE: IrmaRenamer,
-        files.VCF_FILE: IrmaRenamer,
-    }
-    parser = argparse.ArgumentParser(description="Rename CDC-IRMA output files")
+def add_arguments(parser):
     parser.add_argument("-d", "--dirs", nargs="+", required=True)
     parser.add_argument(
         "-t", "--types", nargs="+",
-        choices=[files.FASTA_FILE, files.VCF_FILE, files.BAM_FILE], required=True,
+        choices=[constants.FASTA_FILE, constants.VCF_FILE, constants.BAM_FILE],
+        required=True,
     )
     parser.add_argument("--out_dir", help="Output directory")
-    args = parser.parse_args()
+    return parser
 
+
+def run(args):
+    renamer_dict = {
+        constants.FASTA_FILE: FastaRenamer,
+        constants.BAM_FILE: IrmaRenamer,
+        constants.VCF_FILE: IrmaRenamer,
+    }
     invalid_dirs = [directory for directory in args.dirs if not os.path.isdir(directory)]
     if invalid_dirs:
-        parser.error("Source path(s) are not directories: " + ", ".join(invalid_dirs))
+        raise ValueError("Source path(s) are not directories: " + ", ".join(invalid_dirs))
 
     planned = []
     for directory in args.dirs:
@@ -142,11 +144,19 @@ def main():
             ._planned_renamers()
         )
     out_dir = os.path.abspath(os.fspath(args.out_dir or os.curdir))
+    _run(planned, out_dir)
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Rename CDC-IRMA output files")
+    add_arguments(parser)
+    args = parser.parse_args(argv)
     try:
-        _run(planned, out_dir)
+        return run(args)
     except (OSError, ValueError) as error:
         parser.error(str(error))
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
