@@ -6,7 +6,7 @@ from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from collections import defaultdict
 import argparse
-import constants
+from . import constants
 
 
 SEGMENTS = [

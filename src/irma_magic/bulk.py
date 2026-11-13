@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 import argparse
 import subprocess
-from files import FastqCollection
-import constants
+from .files import FastqCollection
+from . import constants
 
 
 

@@ -2,7 +2,7 @@ import argparse
 import os
 import shutil
 from Bio import SeqIO
-import files
+from . import files
 
 class IrmaRenamer(files.File):
     def __init__(self, filename):

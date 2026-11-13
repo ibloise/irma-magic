@@ -1,6 +1,6 @@
 import argparse
-from magic_irma import constants
-from magic_irma.bulk import IrmaBulk
+from . import constants
+from .bulk import IrmaBulk
 
 def main():
 
@@ -40,3 +40,7 @@ def bulker_main(args):
     irma_bulker = IrmaBulk(args.module, args.files, args.reads, args.irma_cmd, args.forward_pattern, args.reverse_pattern)
 
     irma_bulker.run()
+
+
+if __name__ == "__main__":
+    main()
