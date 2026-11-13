@@ -15,7 +15,7 @@ python -m pip install .
 irmagic --help
 ```
 
-Python 3.12 or newer is required.
+Python 3.10 or newer is required.
 IRMagic has no Python runtime dependencies. Building/installing it uses the
 `setuptools>=61` backend declared in `pyproject.toml`.
 
