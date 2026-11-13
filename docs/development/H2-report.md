@@ -34,6 +34,12 @@ El parser exige concordancia completa con:
 
 La hipótesis previa de que `extend(value)` fallaba era incorrecta: `Collection.extend(*elements)` recibe el `FluSegment` como un argumento válido y lo añade mediante `append`. Se cambió a `append(segment)` para hacer explícito el contrato y ordenar la agregación; no se atribuye el cambio a un fallo reproducido de `extend`.
 
+### Agrupación solicitada por subtipo completo
+
+Después de H2, el modo CLI `segments` agrupa por **segmento y subtipo completo**. Escribe, por ejemplo, `HA_H3N2.fasta`, `NA_H3N2.fasta` y `MP_H3N2.fasta`; todos los registros proceden de genomas H3N2 y mantienen su ID/segmento original. `FluGenomeCollection.to_segment_dict()` conserva su agrupación anterior por segmento para compatibilidad; la CLI usa `to_segment_subtype_dict()`.
+
+Si una muestra tiene HA o NA ausente, carece de sufijo de subtipo, o es influenza B sin un subtipo `HXNX`, el modo `segments` falla con el ID de esa muestra en vez de omitirla o inferir un grupo. El modo `samples` sigue exportando esas muestras.
+
 ## Pruebas y comandos
 
 Se añadió `tests/test_flu_tools.py` con IDs y secuencias sintéticos, incluyendo A H1N1/H3N2, B, muestra con guiones bajos, FASTA vacío/mal formado/multirregistro, segmentos duplicados, agrupaciones, salidas y colisiones. No se usan muestras clínicas ni CDC-IRMA.
@@ -44,7 +50,7 @@ python -m compileall -q src tests
 git diff --check
 ```
 
-Resultado: **56 tests pasaron**; `compileall` y `git diff --check` finalizaron correctamente. Se validó el contenido exacto de las salidas y su relectura para comprobar IDs y secuencias.
+Resultado base H2: **56 tests pasaron**. Tras la agrupación adicional por subtipo completo, el conjunto ejecutó **58 tests, todos pasaron**; `compileall` y `git diff --check` finalizaron correctamente. Se validó el contenido exacto de las salidas y su relectura para comprobar IDs y secuencias, además de la ruta CLI de `segments`.
 
 ## Límites
 

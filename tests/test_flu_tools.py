@@ -173,9 +173,13 @@ class FluFastaIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.segments = FluSegmentCollection(
             make_segment("z_sample", constants.NP, "AACCGG"),
+            make_segment("z_sample", constants.M, "GGTACC"),
+            make_segment("z_sample", constants.HA, "GGTA", segment_type="H3"),
+            make_segment("z_sample", constants.NA, "CCGT", segment_type="N2"),
             make_segment("a_sample", constants.HA, "ACTG", segment_type="H1"),
             make_segment("a_sample", constants.NA, "GGTA", segment_type="N1"),
             make_segment("a_sample", constants.NP, "CCAA"),
+            make_segment("a_sample", constants.M, "TTGG"),
         )
         self.genomes = self.segments.return_genomes()
         self.writer = FluGenomeFileWriter(FastaFileWriter())
@@ -221,7 +225,9 @@ class FluFastaIntegrationTests(unittest.TestCase):
             sample_dir = Path(directory) / "samples"
             segment_dir = Path(directory) / "segments"
             self.writer.write_fasta_from_dict(self.genomes.to_id_dict(), sample_dir)
-            self.writer.write_fasta_from_dict(self.genomes.to_segment_dict(), segment_dir)
+            self.writer.write_fasta_from_dict(
+                self.genomes.to_segment_subtype_dict(), segment_dir
+            )
 
             sample_a = FastaFile(str(sample_dir / "a_sample.fasta")).read()
             self.assertEqual(
@@ -230,36 +236,106 @@ class FluFastaIntegrationTests(unittest.TestCase):
                     ("a_sample_A_NP", "CCAA"),
                     ("a_sample_A_HA_H1", "ACTG"),
                     ("a_sample_A_NA_N1", "GGTA"),
+                    ("a_sample_A_MP", "TTGG"),
                 ],
             )
-            ha_records = FastaFile(str(segment_dir / "HA.fasta")).read()
+            ha_records = FastaFile(str(segment_dir / "HA_H1N1.fasta")).read()
             self.assertEqual(
                 [(record.id, record.sequence) for record in ha_records],
                 [("a_sample_A_HA_H1", "ACTG")],
             )
-            np_records = FastaFile(str(segment_dir / "NP.fasta")).read()
+            na_records = FastaFile(str(segment_dir / "NA_H1N1.fasta")).read()
+            self.assertEqual(
+                [(record.id, record.sequence) for record in na_records],
+                [("a_sample_A_NA_N1", "GGTA")],
+            )
+            np_records = FastaFile(str(segment_dir / "NP_H1N1.fasta")).read()
             self.assertEqual(
                 [(record.id, record.sequence) for record in np_records],
-                [("a_sample_A_NP", "CCAA"), ("z_sample_A_NP", "AACCGG")],
+                [("a_sample_A_NP", "CCAA")],
             )
-            self.assertFalse((segment_dir / "PB2.fasta").exists())
+            mp_records = FastaFile(str(segment_dir / "MP_H3N2.fasta")).read()
+            self.assertEqual(
+                [(record.id, record.sequence) for record in mp_records],
+                [("z_sample_A_MP", "GGTACC")],
+            )
+            ha_h3_records = FastaFile(str(segment_dir / "HA_H3N2.fasta")).read()
+            na_h3_records = FastaFile(str(segment_dir / "NA_H3N2.fasta")).read()
+            mp_h1_records = FastaFile(str(segment_dir / "MP_H1N1.fasta")).read()
+            self.assertEqual(
+                [(record.id, record.sequence) for record in ha_h3_records],
+                [("z_sample_A_HA_H3", "GGTA")],
+            )
+            self.assertEqual(
+                [(record.id, record.sequence) for record in na_h3_records],
+                [("z_sample_A_NA_N2", "CCGT")],
+            )
+            self.assertEqual(
+                [(record.id, record.sequence) for record in mp_h1_records],
+                [("a_sample_A_MP", "TTGG")],
+            )
+            np_h3_records = FastaFile(str(segment_dir / "NP_H3N2.fasta")).read()
+            self.assertEqual(
+                [(record.id, record.sequence) for record in np_h3_records],
+                [("z_sample_A_NP", "AACCGG")],
+            )
+            self.assertEqual(
+                sorted(path.name for path in segment_dir.glob("*.fasta")),
+                [
+                    "HA_H1N1.fasta",
+                    "HA_H3N2.fasta",
+                    "MP_H1N1.fasta",
+                    "MP_H3N2.fasta",
+                    "NA_H1N1.fasta",
+                    "NA_H3N2.fasta",
+                    "NP_H1N1.fasta",
+                    "NP_H3N2.fasta",
+                ],
+            )
+            self.assertFalse((segment_dir / "PB2_H1N1.fasta").exists())
 
-            reparsed = FluSegmentCollection.from_fasta(str(segment_dir / "NP.fasta"))
+            reparsed = FluSegmentCollection.from_fasta(
+                str(segment_dir / "NP_H1N1.fasta")
+            )
             self.assertEqual([(segment.id, segment.sequence) for segment in reparsed],
-                             [("a_sample", "CCAA"), ("z_sample", "AACCGG")])
+                             [("a_sample", "CCAA")])
+
+    def test_subtype_grouping_refuses_unknown_or_incomplete_samples(self):
+        complete = FluGenome(
+            make_segment("complete", constants.HA, "AAAA", segment_type="H1"),
+            make_segment("complete", constants.NA, "CCCC", segment_type="N1"),
+            make_segment("complete", constants.M, "GGGG"),
+        )
+        incomplete = FluGenome(make_segment("incomplete", constants.M, "TTTT"))
+        flu_b = FluGenome(
+            make_segment("flu_b", constants.M, "CCCC", flu_type="B")
+        )
+        for genome in (incomplete, flu_b):
+            with self.subTest(sample=genome.id):
+                with self.assertRaisesRegex(ValueError, "does not have a complete HA/NA subtype"):
+                    FluGenomeCollection(complete, genome).to_segment_subtype_dict()
+
+        with tempfile.TemporaryDirectory() as directory:
+            self.writer.write_fasta_from_dict(
+                FluGenomeCollection(incomplete).to_id_dict(), directory
+            )
+            self.assertEqual(
+                FastaFile(str(Path(directory) / "incomplete.fasta")).read()[0].sequence,
+                "TTTT",
+            )
 
     def test_existing_output_collision_fails_before_any_write(self):
         with tempfile.TemporaryDirectory() as directory:
             output_dir = Path(directory) / "already-there"
             output_dir.mkdir()
-            sentinel = output_dir / "NP.fasta"
+            sentinel = output_dir / "NP_H1N1.fasta"
             sentinel.write_text("keep this\n", encoding="utf-8")
             with self.assertRaisesRegex(FileExistsError, "Refusing to overwrite"):
                 self.writer.write_fasta_from_dict(
-                    self.genomes.to_segment_dict(), output_dir
+                    self.genomes.to_segment_subtype_dict(), output_dir
                 )
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep this\n")
-            self.assertFalse((output_dir / "HA.fasta").exists())
+            self.assertFalse((output_dir / "HA_H1N1.fasta").exists())
 
     def test_fasta_file_writer_refuses_to_overwrite_direct_destination(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -312,6 +388,29 @@ class FluFastaIntegrationTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as error:
                 flu_tools.main()
         self.assertEqual(error.exception.code, 2)
+
+    def test_cli_segments_mode_writes_segment_and_subtype_names(self):
+        from irma_magic import flu_tools
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "input.fasta"
+            output = Path(directory) / "results"
+            source.write_text(
+                ">sample_A_HA_H1\nAAAA\n"
+                ">sample_A_NA_N1\nCCCC\n"
+                ">sample_A_MP\nGGGG\n",
+                encoding="utf-8",
+            )
+            argv = [
+                "flu-tools", "-f", str(source), "-m", "segments",
+                "-o", str(output),
+            ]
+            with patch("sys.argv", argv):
+                flu_tools.main()
+            self.assertEqual(
+                sorted(path.name for path in output.glob("*.fasta")),
+                ["HA_H1N1.fasta", "MP_H1N1.fasta", "NA_H1N1.fasta"],
+            )
 
 
 if __name__ == "__main__":

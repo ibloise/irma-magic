@@ -379,6 +379,25 @@ class FluGenomeCollection(Collection):
                     return_dict[segment_name].append(segment)
         return return_dict
 
+    def to_segment_subtype_dict(self):
+        grouped = defaultdict(FluSegmentCollection)
+        seen_ids = set()
+        for genome in sorted(self._collection, key=lambda item: item.id):
+            if genome.id in seen_ids:
+                raise ValueError(f"Duplicate genome sample ID {genome.id!r}")
+            seen_ids.add(genome.id)
+            if genome.subtype is None:
+                raise ValueError(
+                    f"Cannot group segments by subtype: sample {genome.id!r} "
+                    "does not have a complete HA/NA subtype"
+                )
+            for segment_name in SEGMENTS:
+                segment = genome.segments.get(segment_name)
+                if segment is not None:
+                    key = f"{segment_name}_{genome.subtype}"
+                    grouped[key].append(segment)
+        return {key: grouped[key] for key in sorted(grouped)}
+
 
 class FluGenomeRecordCreator:
     @staticmethod
@@ -430,12 +449,29 @@ class FluGenomeFileWriter:
             segment_list = list(segments)
             if any(not isinstance(segment, FluSegment) for segment in segment_list):
                 raise TypeError(f"Output group {key!r} contains a non-FluSegment value")
+            segment_subtype = None
+            if "_" in key:
+                candidate_segment, candidate_subtype = key.rsplit("_", 1)
+                if (
+                    candidate_segment in SEGMENTS
+                    and re.fullmatch(r"H\d+N\d+", candidate_subtype)
+                ):
+                    segment_subtype = (candidate_segment, candidate_subtype)
             is_segment_group = key in SEGMENTS and all(
                 segment.segment == key for segment in segment_list
             )
             is_sample_group = all(segment.id == key for segment in segment_list)
-            if segment_list and not (is_segment_group or is_sample_group):
+            is_segment_subtype_group = bool(segment_subtype) and all(
+                self._matches_segment_subtype_group(segment, segment_subtype)
+                for segment in segment_list
+            )
+            if segment_list and not (
+                is_segment_group or is_sample_group or is_segment_subtype_group
+            ):
                 raise ValueError(f"Output group {key!r} mixes samples or segments")
+            sample_segments = [(segment.id, segment.segment) for segment in segment_list]
+            if len(set(sample_segments)) != len(sample_segments):
+                raise ValueError(f"Output group {key!r} contains duplicate segments")
             grouped_segments[key] = segment_list
 
         record_dict = FluGenomeRecordCreator.create_record_dict(grouped_segments)
@@ -465,11 +501,33 @@ class FluGenomeFileWriter:
         for (key, value), dest_file in zip(records_to_write, destinations):
             self.file_writer.write(value, dest_file)
 
+    @staticmethod
+    def _matches_segment_subtype_group(segment, segment_subtype):
+        segment_name, subtype = segment_subtype
+        if segment.segment != segment_name or segment.type != constants.A_TYPE:
+            return False
+        if segment_name == constants.HA:
+            expected_segment_type = re.match(r"H\d+", subtype).group(0)
+            return segment.segment_type == expected_segment_type
+        if segment_name == constants.NA:
+            expected_segment_type = re.search(r"N\d+$", subtype).group(0)
+            return segment.segment_type == expected_segment_type
+        return True
+
 def main():
     parser = argparse.ArgumentParser(description="Renombra archivos de IRMA")
     parser.add_argument("-f", "--files", help="Archivos que se van a utilizar", nargs="+", required=True)
     parser.add_argument("-o", "--out_dir", default=".")
-    parser.add_argument("-m", "--mode", choices=["samples", "segments"], required=True)
+    parser.add_argument(
+        "-m",
+        "--mode",
+        choices=["samples", "segments"],
+        required=True,
+        help=(
+            "samples exporta por muestra; segments exporta por segmento y "
+            "subtipo HXNX completo (por ejemplo, HA_H3N2)"
+        ),
+    )
     args = parser.parse_args()
     
     collection = FluSegmentCollection.from_list_files(args.files)
@@ -480,7 +538,7 @@ def main():
     if args.mode == "samples":
         segments = genome_collection.to_id_dict()
     else:
-        segments = genome_collection.to_segment_dict()
+        segments = genome_collection.to_segment_subtype_dict()
 
     file_writer = FastaFileWriter()
     flu_writer = FluGenomeFileWriter(file_writer)
