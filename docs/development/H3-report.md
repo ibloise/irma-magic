@@ -32,10 +32,10 @@ push, PR, merge ni publicación. CDC-IRMA sigue siendo un programa externo.
 - `PYTHONPATH=src python -m unittest discover -s tests`: **71 tests pasaron**.
 - `python -m compileall -q src tests`: correcto.
 - `git diff --check`: correcto.
-- `python -m pip wheel --no-deps --no-build-isolation --wheel-dir /tmp/irma-magic-wheels .`:
+- `python -m pip wheel --no-deps --no-build-isolation --wheel-dir <directorio-temporal> .`:
   wheel `irma_magic-0.1.0-py3-none-any.whl` construido con el backend ya
   instalado, sin instalar dependencias.
-- Wheel instalado con `--no-deps` en `/tmp/irma-magic-venv`; desde `/tmp`,
+- Wheel instalado con `--no-deps` en un entorno temporal; desde otro directorio,
   `irmagic --help`, `irmagic bulker --help` e imports de `irma_magic`,
   `irma_magic.cli` y `irma_magic.flu_tools` funcionaron. Sin subcomando,
   `irmagic` termina con código 2.

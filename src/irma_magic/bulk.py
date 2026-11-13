@@ -118,3 +118,4 @@ class IrmaBulk:
                     f"Permission denied while starting IRMA executable "
                     f"{self.irma_cmd!r}"
                 ) from error
+        return 0
