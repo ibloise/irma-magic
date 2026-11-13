@@ -1,12 +1,10 @@
 import os
 import re
 import pandas as pd
-from Bio.Seq import Seq
-from Bio import SeqIO
-from Bio.SeqRecord import SeqRecord
 from collections import defaultdict
 import argparse
 from . import constants
+from .fasta import FastaFile, FastaRecord
 
 
 SEGMENTS = [
@@ -87,13 +85,12 @@ class FluSegment:
     @classmethod
     def from_record(cls, record):
         id, type, segment, segment_type = cls.parse_id(record.id)
-        return cls(id, segment, sequence=record.seq, flu_type=type, segment_type=segment_type)
+        return cls(id, segment, sequence=record.sequence, flu_type=type, segment_type=segment_type)
 
     @classmethod
     def read_file(cls, file):
-        with open(file, "r") as f:
-            records = list(SeqIO.parse(f, "fasta"))
-        if len(records) > 1:
+        records = FastaFile(file).read()
+        if len(records) != 1:
             raise ValueError("Only single-fasta segment are admitted")
         return cls.from_record(records[0])
 
@@ -137,9 +134,7 @@ class FluSegmentCollection(Collection):
     
     @classmethod
     def from_fasta(cls, fasta):
-
-        with open(fasta, "r") as file:
-            records = list(SeqIO.parse(file, "fasta"))
+        records = FastaFile(fasta).read()
         
         instance = cls()
         for record in records:
@@ -290,8 +285,7 @@ class FluGenomeRecordCreator:
             id = f"{segment.id}_{segment.type}_{segment.segment}"
             if segment.segment_type:
                 id = f"{id}_{segment.segment_type}"
-            record = SeqRecord(Seq(segment.sequence),
-                               id=id, description="")
+            record = FastaRecord(id=id, sequence=str(segment.sequence))
             records.append(record)
         return records
     
@@ -309,8 +303,7 @@ class FileWriterInterface:
 
 class FastaFileWriter(FileWriterInterface):
     def write(self, records, dest_file):
-        with open(dest_file, 'w') as file:
-            SeqIO.write(records, file, constants.FASTA_FILE)
+        FastaFile(dest_file).write(records)
 
 class FluGenomeFileWriter:
     def __init__(self, file_writer: FileWriterInterface):

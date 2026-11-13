@@ -1,8 +1,8 @@
 import argparse
 import os
 import shutil
-from Bio import SeqIO
 from . import files
+from .fasta import FastaFile, FastaRecord
 
 class IrmaRenamer(files.File):
     def __init__(self, filename):
@@ -20,16 +20,15 @@ class IrmaRenamer(files.File):
 class FastaRenamer(IrmaRenamer):
     def rename(self):
         print(f"Renombrado {self.full_name}")
-        with open(self.full_name, "r") as input_handle, open(self.dest_file, "w") as output_handle:
-            name = os.path.splitext(os.path.basename(self.dest_file))[0]
-            for record in SeqIO.parse(input_handle, files.FASTA_FILE):
-                # Eliminamos la descripción para mayor elegancia del fasta
-                record.description = ""
-                if record.id in name:
-                    record.id = name
-                else:
-                    record.id = f"{name}_{record.id}"
-                SeqIO.write(record, output_handle, files.FASTA_FILE)
+        name = os.path.splitext(os.path.basename(self.dest_file))[0]
+        records = []
+        for record in FastaFile(self.full_name).read():
+            if record.id in name:
+                new_id = name
+            else:
+                new_id = f"{name}_{record.id}"
+            records.append(FastaRecord(id=new_id, sequence=record.sequence))
+        FastaFile(self.dest_file).write(records)
 
 
 class IrmaDirRenamer:
