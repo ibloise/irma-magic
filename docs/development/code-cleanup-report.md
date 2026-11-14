@@ -60,8 +60,9 @@
   `irmagic` and all three subcommands from outside the checkout.
 - Wheel and sdist metadata identify distribution `irma-magic`, package
   `irma_magic`, version `0.1.0a1`, MIT, Python `>=3.10`, and no `Requires-Dist`.
-- The new GitHub Actions packaging job and Python 3.10–3.14 matrix are pending a
-  run on this branch. Only Python 3.13.5 is installed locally.
+- GitHub Actions run [#6](https://github.com/ibloise/irma-magic/actions/runs/43592652275)
+  passed: unit tests on Python 3.10–3.14 and wheel/sdist build plus clean install
+  and CLI checks on Python 3.10. Only Python 3.13.5 is installed locally.
 
 ## Risks and pending decisions
 
