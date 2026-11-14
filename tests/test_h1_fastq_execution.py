@@ -1,7 +1,9 @@
 import subprocess
+import tempfile
 import unittest
 from contextlib import redirect_stderr
 from io import StringIO
+from pathlib import Path
 from unittest.mock import patch
 
 from irma_magic.bulk import IrmaBulk, IrmaExecutionError
@@ -170,12 +172,15 @@ class IrmaBulkTests(unittest.TestCase):
     def test_cli_returns_failure_status_for_execution_error(self):
         from irma_magic import cli
 
-        stderr = StringIO()
-        argv = ["irmagic", "bulker", "-f", "sample.fastq", "-m", "module"]
-        with patch("sys.argv", argv), patch.object(
-            cli.IrmaBulk, "run", side_effect=IrmaExecutionError("mock failure")
-        ), redirect_stderr(stderr):
-            status = cli.main()
+        with tempfile.TemporaryDirectory() as directory:
+            input_file = Path(directory) / "sample.fastq"
+            input_file.write_text("synthetic FASTQ", encoding="utf-8")
+            stderr = StringIO()
+            argv = ["irmagic", "bulker", "-f", str(input_file), "-m", "module"]
+            with patch("sys.argv", argv), patch.object(
+                cli.IrmaBulk, "run", side_effect=IrmaExecutionError("mock failure")
+            ), redirect_stderr(stderr):
+                status = cli.main()
         self.assertEqual(status, 1)
         self.assertIn("mock failure", stderr.getvalue())
 

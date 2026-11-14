@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -48,15 +50,16 @@ class SimulatedIrmaCliTests(unittest.TestCase):
             orphan = Path(temporary) / "orphan_R1.fastq"
             orphan.write_text("synthetic read fixture\n", encoding="utf-8")
             argv = [
-                "irmagic", "bulker", "--files", str(orphan),
+                "bulker", "--files", str(orphan),
                 "--module", "MODULE", "--reads", "paired",
             ]
-            with patch("sys.argv", argv), patch(
+            stderr = StringIO()
+            with redirect_stderr(stderr), patch(
                 "irma_magic.bulk.subprocess.run"
             ) as run:
-                with self.assertRaises(SystemExit) as error:
-                    cli.main()
-            self.assertEqual(error.exception.code, 2)
+                self.assertEqual(cli.main(argv), 2)
+            self.assertIn("orphan", stderr.getvalue())
+            self.assertNotIn("usage:", stderr.getvalue())
             run.assert_not_called()
 
 

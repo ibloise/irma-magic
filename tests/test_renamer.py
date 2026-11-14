@@ -90,6 +90,32 @@ class RenamerTests(unittest.TestCase):
                 _run(plans, str(output))
             self.assertFalse(output.exists())
 
+    def test_mid_batch_failure_keeps_completed_copy_and_reports_failing_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_dir = root / "run"
+            source_dir.mkdir()
+            (source_dir / "a.vcf").write_text("first", encoding="utf-8")
+            (source_dir / "b.vcf").write_text("second", encoding="utf-8")
+            output = root / "out"
+            mapping = {constants.VCF_FILE: IrmaRenamer}
+            batch = IrmaDirRenamer(
+                source_dir, [constants.VCF_FILE], mapping, output
+            )._planned_renamers()
+
+            def fail():
+                raise OSError("simulated copy failure")
+
+            batch[1].rename = fail
+            from irma_magic.renamer import _run
+            with self.assertRaisesRegex(OSError, "b.vcf"):
+                _run(batch, str(output))
+
+            self.assertEqual(
+                (output / "run_a.vcf").read_text(encoding="utf-8"), "first"
+            )
+            self.assertFalse((output / "run_b.vcf").exists())
+
     def test_fasta_rejects_duplicate_result_ids_without_creating_output(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

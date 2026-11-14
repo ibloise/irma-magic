@@ -1,9 +1,10 @@
 import argparse
 import os
 import shutil
+import sys
 
 from . import constants, files
-from .fasta import FastaFile, FastaRecord, FastaWriter
+from .fasta import FastaFile, FastaRecord
 
 
 def _preflight(renamers):
@@ -22,7 +23,13 @@ def _run(renamers, out_dir):
     _preflight(renamers)
     os.makedirs(out_dir, exist_ok=True)
     for renamer in renamers:
-        renamer.rename()
+        try:
+            renamer.rename()
+        except (OSError, ValueError) as error:
+            raise type(error)(
+                f"Failed to process {renamer.full_name!r} as "
+                f"{renamer.dest_file!r}: {error}"
+            ) from error
 
 
 class IrmaRenamer(files.File):
@@ -34,26 +41,25 @@ class IrmaRenamer(files.File):
         self.dest_file = os.path.join(self.out_dir, prefix + self.name)
 
     def rename(self):
-        _preflight([self])
         os.makedirs(self.out_dir, exist_ok=True)
-        destination_created = False
-        try:
+
+        def copy_contents(destination):
             with open(self.full_name, "rb") as source:
-                with open(self.dest_file, "xb") as destination:
-                    destination_created = True
-                    shutil.copyfileobj(source, destination)
-        except Exception:
-            if destination_created:
-                os.unlink(self.dest_file)
-            raise
+                shutil.copyfileobj(source, destination)
+
+        files.write_new_file(self.dest_file, copy_contents, binary=True)
         return self.dest_file
 
 
 class FastaRenamer(IrmaRenamer):
     def rename(self):
-        _preflight([self])
         name = os.path.splitext(os.path.basename(self.dest_file))[0]
-        records = FastaFile(self.full_name).read()
+        try:
+            records = FastaFile(self.full_name).read()
+        except OSError as error:
+            raise ValueError(
+                f"Cannot read FASTA input {self.full_name!r}: {error}"
+            ) from error
         if not records:
             raise ValueError(f"FASTA file {self.full_name!r} contains no records")
 
@@ -72,15 +78,7 @@ class FastaRenamer(IrmaRenamer):
             renamed_records.append(FastaRecord(new_id, record.sequence, record.description))
 
         os.makedirs(self.out_dir, exist_ok=True)
-        destination_created = False
-        try:
-            with open(self.dest_file, "x", encoding="utf-8", newline="\n") as handle:
-                destination_created = True
-                FastaWriter().write(renamed_records, handle)
-        except Exception:
-            if destination_created:
-                os.unlink(self.dest_file)
-            raise
+        FastaFile(self.dest_file).write(renamed_records)
         return self.dest_file
 
 
@@ -123,7 +121,9 @@ def add_arguments(parser):
         choices=[constants.FASTA_FILE, constants.VCF_FILE, constants.BAM_FILE],
         required=True,
     )
-    parser.add_argument("--out_dir", help="Output directory")
+    parser.add_argument(
+        "--out-dir", "--out_dir", dest="out_dir", help="Output directory"
+    )
     return parser
 
 
@@ -154,8 +154,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         return run(args)
-    except (OSError, ValueError) as error:
-        parser.error(str(error))
+    except ValueError as error:
+        print(f"irmagic: error: {error}", file=sys.stderr)
+        return 2
+    except OSError as error:
+        print(f"irmagic: error: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

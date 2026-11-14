@@ -1,6 +1,43 @@
 import os
+import secrets
 
 from . import constants
+
+
+def write_new_file(path, writer, *, binary=False, newline=None):
+    """Write and atomically publish a new file without replacing a path."""
+    destination = os.path.abspath(os.fsdecode(os.fspath(path)))
+    directory = os.path.dirname(destination)
+    for _ in range(100):
+        temporary = os.path.join(directory, ".irmagic-" + secrets.token_hex(8))
+        try:
+            descriptor = os.open(
+                temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
+            )
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise FileExistsError(
+            f"Could not reserve a temporary file for {destination!r}"
+        )
+
+    try:
+        if binary:
+            handle = os.fdopen(descriptor, "wb")
+        else:
+            handle = os.fdopen(descriptor, "w", encoding="utf-8", newline=newline)
+        with handle:
+            writer(handle)
+        os.link(temporary, destination)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+    else:
+        os.unlink(temporary)
 
 
 class File:
@@ -60,21 +97,22 @@ class FastqFile(File):
         self.stem = self._name[:-len(self.ext)]
 
 class FastqSet:
-    def __init__(self, file_tuple, paired, patterns):
+    def __init__(self, file_tuple, paired, patterns, common_name=None):
         self.files = file_tuple
         self.paired = paired
         self.patterns = patterns
         check_file = file_tuple[0]
         self.compress = check_file.compressed
-        if paired:
-            if check_file.stem.count(patterns[0]) != 1:
-                raise ValueError(
-                    f"Expected exactly one read marker {patterns[0]!r} "
-                    f"in {check_file.name!r}"
-                )
-            common_name = check_file.stem.replace(patterns[0], "", 1)
-        else:
-            common_name = check_file.stem
+        if common_name is None:
+            if paired:
+                if check_file.stem.count(patterns[0]) != 1:
+                    raise ValueError(
+                        f"Expected exactly one read marker {patterns[0]!r} "
+                        f"in {check_file.name!r}"
+                    )
+                common_name = check_file.stem.replace(patterns[0], "", 1)
+            else:
+                common_name = check_file.stem
         if not common_name:
             raise ValueError(f"FASTQ filename {check_file.name!r} has an empty sample ID")
         self.common_name = common_name
@@ -107,19 +145,22 @@ class FastqCollection:
         if not fastq_files:
             raise ValueError("At least one FASTQ input is required")
         if paired:
-            files_tuple_list = self._pair_files(
+            files_and_names = self._pair_files(
                 fastq_files, first_pattern, second_pattern
             )
         else:
-            files_tuple_list = [(fastq_file,) for fastq_file in fastq_files]
+            files_and_names = [
+                ((fastq_file,), fastq_file.stem) for fastq_file in fastq_files
+            ]
 
         existing_names = {fastq_set.common_name for fastq_set in self._collection}
         new_sets = []
-        for file_tuple in files_tuple_list:
+        for file_tuple, common_name in files_and_names:
             fastq_set = FastqSet(
                 file_tuple,
                 paired,
                 (first_pattern, second_pattern),
+                common_name=common_name,
             )
             if fastq_set.common_name in existing_names:
                 raise ValueError(
@@ -190,7 +231,7 @@ class FastqCollection:
                     f"Invalid paired FASTQ inputs for sample {sample_id!r}: "
                     f"{'; '.join(details)}"
                 )
-            pairs.append((reads[1][0], reads[2][0]))
+            pairs.append(((reads[1][0], reads[2][0]), sample_id))
         return pairs
 
     def iter_files(self):

@@ -25,27 +25,27 @@ Pass one or more single-end FASTQ files to `bulker`. Supported suffixes are
 `.fastq`, `.fq`, `.fastq.gz`, and `.fq.gz`:
 
 ```sh
-irmagic --irma_cmd IRMA bulker --files reads/sample-a.fastq reads/sample-b.fq \
+irmagic --irma-cmd IRMA bulker --files reads/sample-a.fastq reads/sample-b.fq \
   --module MODULE
 ```
 
 For paired reads, filenames must contain exactly one read marker each, and
 each sample must have one forward and one reverse file. By default the markers
-are `_R1` and `_R2`; they can be changed with `--forward_pattern` and
-`--reverse_pattern`:
+are `_R1` and `_R2`; they can be changed with `--forward-pattern` and
+`--reverse-pattern`:
 
 ```sh
-irmagic --irma_cmd IRMA bulker --files reads/sample-a_R1.fastq.gz reads/sample-a_R2.fastq.gz \
+irmagic --irma-cmd IRMA bulker --files reads/sample-a_R1.fastq.gz reads/sample-a_R2.fastq.gz \
   --module MODULE --reads paired
 ```
 
 Paths are passed as individual process arguments, including paths with spaces.
 The sample ID is the filename stem with the read marker removed for paired
 inputs. It becomes the IRMA output name. Duplicate output names, incomplete
-pairs, unsupported file names, and IRMA execution failures are reported
-explicitly. Invalid CLI arguments exit with status 2; IRMA execution errors
-exit with status 1. IRMA's own output and result format are controlled by the
-external IRMA installation and selected module.
+pairs, unsupported file names, missing input files, and IRMA execution failures
+are reported explicitly. Invalid CLI arguments or input values exit with
+status 2; IRMA execution errors and processing failures exit with status 1.
+Existing files are never overwritten.
 
 ## Process influenza FASTA results
 
@@ -58,30 +58,44 @@ The parser preserves sequence text and does not validate nucleotide alphabets.
 Export records grouped by sample:
 
 ```sh
-irmagic flu --files results.fasta --mode samples --out_dir exported
+irmagic flu --files results.fasta --mode samples --out-dir exported
 ```
 
 Export records grouped by segment and complete subtype:
 
 ```sh
-irmagic flu --files results.fasta --mode segments --out_dir exported
+irmagic flu --files results.fasta --mode segments --out-dir exported
 ```
 
 The `samples` mode writes one non-empty FASTA per valid sample. The `segments`
 mode writes names such as `HA_H3N2.fasta`, `NA_H3N2.fasta`, and
 `MP_H3N2.fasta`. A sample without a complete A subtype is reported and omitted
 from subtype groups; other samples continue. A partial batch exits with status
-1. Invalid input or output collisions also fail explicitly. CSV summary helpers
+Invalid input or output collisions also fail explicitly. CSV summary helpers
 in `irma_magic.flu_tools.FluGenomeSummarizer` write standard CSV to an open text
 handle using the standard library. Add `--summary` to `irmagic flu` to create
 `summary.csv` in the output directory; existing summaries are not overwritten.
+The older underscore options (`--out_dir`, `--irma_cmd`,
+`--forward_pattern`, and `--reverse_pattern`) remain accepted as aliases.
 
 The `renamer` command copies selected IRMA output files without modifying their
 sources and refuses to overwrite existing or colliding output paths:
 
 ```sh
-irmagic renamer --dirs irma-run --types fasta vcf --out_dir renamed
+irmagic renamer --dirs irma-run --types fasta vcf --out-dir renamed
 ```
+
+## Batch failure policy
+
+Batch processing stops at the first file write or IRMA execution failure.
+Outputs completed before the failure are kept; an incomplete IRMagic-written
+file is removed, and pre-existing destinations are left untouched. A
+`renamer` or `flu` batch may therefore leave completed outputs and exits with
+status 1. For `bulker`, completed IRMA sample outputs are retained. IRMagic does
+not remove output produced by a failing external IRMA process because its
+output layout is controlled by IRMA and its module. Influenza samples rejected
+during grouping are reported, valid samples continue, and the command exits
+with status 1 when any sample was skipped.
 
 ## Limits
 

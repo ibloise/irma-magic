@@ -22,3 +22,33 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m unittest discover -s tests -v
+
+  package:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+      - name: Build wheel and source distribution
+        run: |
+          python -m pip install build
+          python -m build --sdist --wheel --outdir dist
+      - name: Install wheel in a clean environment and run the CLI
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-env"
+          "$RUNNER_TEMP/wheel-env/bin/python" -m pip install --no-deps dist/*.whl
+          mkdir "$RUNNER_TEMP/wheel-run"
+          cd "$RUNNER_TEMP/wheel-run"
+          "$RUNNER_TEMP/wheel-env/bin/python" -c "import irma_magic"
+          "$RUNNER_TEMP/wheel-env/bin/irmagic" --help
+      - name: Install source distribution in a clean environment and run the CLI
+        run: |
+          python -m venv "$RUNNER_TEMP/sdist-env"
+          "$RUNNER_TEMP/sdist-env/bin/python" -m pip install --no-deps dist/*.tar.gz
+          mkdir "$RUNNER_TEMP/sdist-run"
+          cd "$RUNNER_TEMP/sdist-run"
+          "$RUNNER_TEMP/sdist-env/bin/python" -c "import irma_magic"
+          "$RUNNER_TEMP/sdist-env/bin/irmagic" --help

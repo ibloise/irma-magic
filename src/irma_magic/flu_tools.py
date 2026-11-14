@@ -1,12 +1,14 @@
+import argparse
+import csv
 import os
 import re
-import csv
+import sys
 from collections import defaultdict
 from typing import Optional
-import argparse
-import sys
+
 from . import constants
 from .fasta import FastaFile, FastaRecord
+from .files import write_new_file
 
 
 SEGMENTS = [
@@ -194,16 +196,13 @@ class FluSegmentCollection(Collection):
     CLASS_TYPE = FluSegment
 
     def return_genomes(self):
-        return_dict = defaultdict(list)
-        for segment in self._collection:
-            return_dict[segment.id].append(segment)
-
-        return_collection = FluGenomeCollection()
-        for sample_id in sorted(return_dict):
-            return_collection.append(FluGenome(*return_dict[sample_id]))
-        return return_collection
+        genomes, _ = self._group_genomes(skip_invalid=False)
+        return genomes
 
     def return_genomes_with_errors(self):
+        return self._group_genomes(skip_invalid=True)
+
+    def _group_genomes(self, skip_invalid):
         return_dict = defaultdict(list)
         for segment in self._collection:
             return_dict[segment.id].append(segment)
@@ -214,10 +213,14 @@ class FluSegmentCollection(Collection):
             try:
                 genome = FluGenome(*return_dict[sample_id])
             except ValueError as error:
+                if not skip_invalid:
+                    raise
                 errors.append(f"Sample {sample_id!r}: {error}")
                 continue
             return_collection.append(genome)
-        return return_collection, errors
+        if skip_invalid:
+            return return_collection, errors
+        return return_collection, []
     
     @classmethod
     def from_fasta(cls, fasta):
@@ -227,7 +230,12 @@ class FluSegmentCollection(Collection):
         
         instance = cls()
         for record in records:
-            segment = FluSegment.from_record(record)
+            try:
+                segment = FluSegment.from_record(record)
+            except ValueError as error:
+                raise ValueError(
+                    f"Invalid record in FASTA file {fasta!r}: {error}"
+                ) from error
             instance.append(segment)
         
         return instance
@@ -449,21 +457,43 @@ class FluGenomeRecordCreator:
             record_dict[key] = records
         return record_dict
 
-class FileWriterInterface:
-    def write(self, data, dest_file):
-        raise NotImplementedError
-
-class FastaFileWriter(FileWriterInterface):
+class FastaFileWriter:
     def write(self, records, dest_file):
-        if os.path.lexists(dest_file):
-            raise FileExistsError(f"Refusing to overwrite FASTA file {dest_file!r}")
-        FastaFile(dest_file).write(records)
+        try:
+            FastaFile(dest_file).write(records)
+        except FileExistsError as error:
+            raise FileExistsError(
+                f"Refusing to overwrite FASTA file {dest_file!r}"
+            ) from error
 
 class FluGenomeFileWriter:
-    def __init__(self, file_writer: FileWriterInterface):
+    def __init__(self, file_writer):
         self.file_writer = file_writer
 
     def write_fasta_from_dict(self, segment_dict, out_dir=""):
+        grouped_segments = self._validate_groups(segment_dict)
+        record_dict = FluGenomeRecordCreator.create_record_dict(grouped_segments)
+        records_to_write = [
+            (key, value) for key, value in record_dict.items() if value
+        ]
+        if not records_to_write:
+            raise ValueError("No FASTA records are available to export")
+
+        out_dir = os.fspath(out_dir) if out_dir else os.curdir
+        os.makedirs(out_dir, exist_ok=True)
+        destinations = self._plan_destinations(records_to_write, out_dir)
+        self._write_records(records_to_write, destinations)
+
+    def _write_records(self, records_to_write, destinations):
+        for (key, records), dest_file in zip(records_to_write, destinations):
+            try:
+                self.file_writer.write(records, dest_file)
+            except (OSError, ValueError) as error:
+                raise type(error)(
+                    f"Failed to write FASTA group {key!r} to {dest_file!r}: {error}"
+                ) from error
+
+    def _validate_groups(self, segment_dict):
         grouped_segments = {}
         for key, segments in segment_dict.items():
             if (
@@ -503,16 +533,10 @@ class FluGenomeFileWriter:
             if len(set(sample_segments)) != len(sample_segments):
                 raise ValueError(f"Output group {key!r} contains duplicate segments")
             grouped_segments[key] = segment_list
+        return grouped_segments
 
-        record_dict = FluGenomeRecordCreator.create_record_dict(grouped_segments)
-        records_to_write = [
-            (key, value) for key, value in record_dict.items() if value
-        ]
-        if not records_to_write:
-            raise ValueError("No FASTA records are available to export")
-
-        out_dir = os.fspath(out_dir) if out_dir else os.curdir
-        os.makedirs(out_dir, exist_ok=True)
+    @staticmethod
+    def _plan_destinations(records_to_write, out_dir):
         destinations = [
             os.path.join(out_dir, f"{key}{constants.FASTA_EXT}")
             for key, _ in records_to_write
@@ -527,9 +551,7 @@ class FluGenomeFileWriter:
             raise FileExistsError(
                 "Refusing to overwrite FASTA output(s): " + ", ".join(existing)
             )
-
-        for (key, value), dest_file in zip(records_to_write, destinations):
-            self.file_writer.write(value, dest_file)
+        return destinations
 
     @staticmethod
     def _matches_segment_subtype_group(segment, segment_subtype):
@@ -545,24 +567,33 @@ class FluGenomeFileWriter:
         return True
 
 def add_arguments(parser):
-    parser.add_argument("-f", "--files", help="Archivos que se van a utilizar", nargs="+", required=True)
-    parser.add_argument("-o", "--out_dir", default=".")
+    parser.add_argument(
+        "-f", "--files", help="FASTA input files", nargs="+", required=True
+    )
+    parser.add_argument("-o", "--out-dir", "--out_dir", dest="out_dir", default=".")
     parser.add_argument(
         "-m",
         "--mode",
         choices=["samples", "segments"],
         required=True,
         help=(
-            "samples exporta por muestra; segments exporta por segmento y "
-            "subtipo HXNX completo (por ejemplo, HA_H3N2)"
+            "Export by sample, or by segment and complete HXNX subtype "
+            "(for example, HA_H3N2)"
         ),
     )
-    parser.add_argument("--summary", action="store_true", help="Write summary.csv in the output directory")
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Write summary.csv to the output directory",
+    )
     return parser
 
 
 def run(args):
-    collection = FluSegmentCollection.from_list_files(args.files)
+    try:
+        collection = FluSegmentCollection.from_list_files(args.files)
+    except OSError as error:
+        raise ValueError(f"Cannot read FASTA input: {error}") from error
     genome_collection, errors = collection.return_genomes_with_errors()
 
     if args.mode == "samples":
@@ -587,19 +618,33 @@ def run(args):
         flu_writer.write_fasta_from_dict(segments, out_dir)
     if summary_path is not None:
         os.makedirs(out_dir, exist_ok=True)
-        with open(summary_path, "x", encoding="utf-8", newline="") as handle:
-            FluGenomeSummarizer.bulk_summary_to_csv(genome_collection, handle)
+        try:
+            write_new_file(
+                summary_path,
+                lambda handle: FluGenomeSummarizer.bulk_summary_to_csv(
+                    genome_collection, handle
+                ),
+                newline="",
+            )
+        except OSError as error:
+            raise OSError(
+                f"Failed to write summary file {summary_path!r}: {error}"
+            ) from error
     return 1 if errors else 0
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Tools for working with influenza FASTA files")
+    parser = argparse.ArgumentParser(description="Process influenza FASTA files")
     add_arguments(parser)
     args = parser.parse_args(argv)
     try:
         return run(args)
-    except (OSError, ValueError) as error:
-        parser.error(str(error))
+    except ValueError as error:
+        print(f"irmagic: error: {error}", file=sys.stderr)
+        return 2
+    except OSError as error:
+        print(f"irmagic: error: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

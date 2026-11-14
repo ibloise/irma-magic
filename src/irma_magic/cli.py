@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 
 from . import constants
@@ -6,12 +7,29 @@ from .bulk import IrmaBulk, IrmaExecutionError
 from . import flu_tools, renamer
 
 
-def main():
+def _execute(callback, args):
+    try:
+        return callback(args)
+    except ValueError as error:
+        print(f"irmagic: error: {error}", file=sys.stderr)
+        return 2
+    except (OSError, IrmaExecutionError) as error:
+        print(f"irmagic: error: {error}", file=sys.stderr)
+        return 1
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="irmagic",
         description="Utilities for preparing and running CDC-IRMA batches.",
     )
-    parser.add_argument("--irma_cmd", default="IRMA")
+    parser.add_argument(
+        "--irma-cmd",
+        "--irma_cmd",
+        dest="irma_cmd",
+        default="IRMA",
+        help="IRMA executable (default: IRMA)",
+    )
     subparser = parser.add_subparsers(
         dest="command",
         required=True,
@@ -24,18 +42,37 @@ def main():
         description="Build and run one IRMA command per sample.",
     )
     bulk_parser.add_argument(
-        "--irma_cmd", default=argparse.SUPPRESS,
-        help="IRMA executable (default: value set before the subcommand)",
+        "--irma-cmd",
+        "--irma_cmd",
+        dest="irma_cmd",
+        default=argparse.SUPPRESS,
+        help="IRMA executable (overrides the global option)",
     )
-
-    bulk_parser.add_argument("-f", "--files", help="Archivos que se van a utilizar", nargs="+", required=True)
-    bulk_parser.add_argument("-m", "--module", help="Modulo que debe usar IRMA", required=True)
-    bulk_parser.add_argument("-r", "--reads", choices=[constants.SINGLE_READS, constants.PAIRED_READS], default=constants.SINGLE_READS,
-                        help="Tipo de lecturas introducidas")
-    bulk_parser.add_argument("--forward_pattern", help="Patrón de la lectura forward (solo para paired)",
-                        default=constants.FORWARD_VALUE)
-    bulk_parser.add_argument("--reverse_pattern", help="Patrón para la lectura reverse (solo en paired)",
-                        default=constants.REVERSE_VALUE)
+    bulk_parser.add_argument(
+        "-f", "--files", nargs="+", required=True, help="Input FASTQ files"
+    )
+    bulk_parser.add_argument("-m", "--module", required=True, help="IRMA module to run")
+    bulk_parser.add_argument(
+        "-r",
+        "--reads",
+        choices=[constants.SINGLE_READS, constants.PAIRED_READS],
+        default=constants.SINGLE_READS,
+        help="Read layout (default: single)",
+    )
+    bulk_parser.add_argument(
+        "--forward-pattern",
+        "--forward_pattern",
+        dest="forward_pattern",
+        default=constants.FORWARD_VALUE,
+        help="Forward read marker for paired input",
+    )
+    bulk_parser.add_argument(
+        "--reverse-pattern",
+        "--reverse_pattern",
+        dest="reverse_pattern",
+        default=constants.REVERSE_VALUE,
+        help="Reverse read marker for paired input",
+    )
 
     renamer_parser = subparser.add_parser(
         "renamer",
@@ -51,39 +88,34 @@ def main():
     )
     flu_tools.add_arguments(flu_parser)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.command == "bulker":
-        try:
-            return bulker_main(args)
-        except ValueError as error:
-            parser.error(str(error))
-        except IrmaExecutionError as error:
-            print(f"irmagic: error: {error}", file=sys.stderr)
-            return 1
+        return _execute(bulker_main, args)
     elif args.command == "renamer":
-        try:
-            return renamer.run(args)
-        except (OSError, ValueError) as error:
-            parser.error(str(error))
+        return _execute(renamer.run, args)
     elif args.command == "flu":
-        try:
-            return flu_tools.run(args)
-        except (OSError, ValueError) as error:
-            parser.error(str(error))
+        return _execute(flu_tools.run, args)
     return 0
 
+
 def bulker_main(args):
-
-    #argparser
-
-    # Declaramos el bulker:
-
     if not args.files:
-        raise ValueError("Es necesario pasar archivos")
-    
-    irma_bulker = IrmaBulk(args.module, args.files, args.reads, args.irma_cmd, args.forward_pattern, args.reverse_pattern)
-
+        raise ValueError("At least one FASTQ input is required")
+    irma_bulker = IrmaBulk(
+        args.module,
+        args.files,
+        args.reads,
+        args.irma_cmd,
+        args.forward_pattern,
+        args.reverse_pattern,
+    )
+    missing_inputs = [path for path in args.files if not os.path.isfile(path)]
+    if missing_inputs:
+        raise ValueError(
+            "FASTQ input file(s) do not exist or are not regular files: "
+            + ", ".join(repr(path) for path in missing_inputs)
+        )
     return irma_bulker.run()
 
 

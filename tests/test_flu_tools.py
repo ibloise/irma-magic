@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from irma_magic import constants
-from irma_magic.fasta import FastaFile, FastaRecord
+from irma_magic.fasta import FastaFile, FastaRecord, FastaWriter
 from irma_magic.flu_tools import (
     FluGenome,
     FluGenomeCollection,
@@ -374,6 +374,28 @@ class FluFastaIntegrationTests(unittest.TestCase):
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep this\n")
             self.assertFalse((output_dir / "HA_H1N1.fasta").exists())
 
+    def test_mid_batch_write_failure_keeps_completed_files_and_removes_partial_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            segment_groups, errors = self.genomes.to_segment_subtype_dict()
+            self.assertEqual(errors, [])
+            original_write = FastaWriter.write
+            calls = 0
+
+            def fail_second_write(writer, records, handle):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    handle.write(">partial\nAC")
+                    raise OSError("simulated disk failure")
+                return original_write(writer, records, handle)
+
+            with patch.object(FastaWriter, "write", fail_second_write):
+                with self.assertRaisesRegex(OSError, "HA_H3N2"):
+                    self.writer.write_fasta_from_dict(segment_groups, directory)
+
+            self.assertTrue((Path(directory) / "HA_H1N1.fasta").is_file())
+            self.assertFalse((Path(directory) / "HA_H3N2.fasta").exists())
+
     def test_fasta_file_writer_refuses_to_overwrite_direct_destination(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "output.fasta"
@@ -477,6 +499,35 @@ class FluFastaIntegrationTests(unittest.TestCase):
             )
             mp_records = FastaFile(str(output / "MP_H1N1.fasta")).read()
             self.assertEqual([record.id for record in mp_records], ["valid_A_MP"])
+
+    def test_cli_reports_processing_failure_with_status_one_and_removes_summary_partial(self):
+        from irma_magic import flu_tools
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "input.fasta"
+            output = Path(directory) / "results"
+            source.write_text(">sample_A_NP\nACGT\n", encoding="utf-8")
+
+            def fail_after_partial_summary(genomes, handle):
+                handle.write("id,type\n")
+                raise OSError("simulated summary write failure")
+
+            with patch.object(
+                FluGenomeSummarizer,
+                "bulk_summary_to_csv",
+                fail_after_partial_summary,
+            ):
+                status = flu_tools.main([
+                    "--files", str(source), "--mode", "samples",
+                    "--out-dir", str(output), "--summary",
+                ])
+
+            self.assertEqual(status, 1)
+            self.assertTrue((output / "sample.fasta").is_file())
+            self.assertFalse((output / "summary.csv").exists())
+            self.assertEqual(
+                sorted(path.name for path in output.iterdir()), ["sample.fasta"]
+            )
 
     def test_genome_build_errors_are_isolated_per_sample(self):
         segments = FluSegmentCollection(

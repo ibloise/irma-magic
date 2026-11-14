@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Iterable, List, TextIO
 
+from .files import write_new_file
+
 
 @dataclass
 class FastaRecord:
@@ -88,8 +90,16 @@ class FastaFile:
 
     def read(self) -> List[FastaRecord]:
         with open(self.path, "r", encoding="utf-8") as handle:
-            return list(FastaParser.parse(handle))
+            try:
+                return list(FastaParser.parse(handle))
+            except ValueError as error:
+                raise ValueError(
+                    f"Invalid FASTA file {self.path!r}: {error}"
+                ) from error
 
     def write(self, records: Iterable[FastaRecord]) -> None:
-        with open(self.path, "w", encoding="utf-8", newline="\n") as handle:
-            self.writer.write(records, handle)
+        write_new_file(
+            self.path,
+            lambda handle: self.writer.write(records, handle),
+            newline="\n",
+        )

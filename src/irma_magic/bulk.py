@@ -118,4 +118,8 @@ class IrmaBulk:
                     f"Permission denied while starting IRMA executable "
                     f"{self.irma_cmd!r}"
                 ) from error
+            except OSError as error:
+                raise IrmaExecutionError(
+                    f"Could not run IRMA for sample {sample!r}: {error}"
+                ) from error
         return 0

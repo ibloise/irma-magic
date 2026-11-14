@@ -2,6 +2,7 @@ import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from irma_magic.fasta import FastaFile, FastaParser, FastaRecord, FastaWriter
 
@@ -56,6 +57,25 @@ class FastaWriterTests(unittest.TestCase):
             fasta = FastaFile(str(path))
             fasta.write([FastaRecord("sample", "ACGT")])
             self.assertEqual(fasta.read(), [FastaRecord("sample", "ACGT")])
+
+    def test_failed_write_removes_partial_output_and_preserves_existing_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "partial.fasta"
+
+            def fail_after_partial_write(writer, records, handle):
+                handle.write(">sample\nAC")
+                raise OSError("simulated disk failure")
+
+            with patch.object(FastaWriter, "write", fail_after_partial_write):
+                with self.assertRaisesRegex(OSError, "simulated disk failure"):
+                    FastaFile(path).write([FastaRecord("sample", "ACGT")])
+            self.assertFalse(path.exists())
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+            path.write_text("original\n", encoding="utf-8")
+            with self.assertRaises(FileExistsError):
+                FastaFile(path).write([FastaRecord("replacement", "TGCA")])
+            self.assertEqual(path.read_text(encoding="utf-8"), "original\n")
 
     def test_rejects_nonpositive_line_width(self):
         with self.assertRaises(ValueError):
